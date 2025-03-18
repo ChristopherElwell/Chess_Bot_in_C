@@ -5,10 +5,24 @@
 #include <stdbool.h>
 #include <string.h>
 
-Move* create_move(int count, int* pcs, unsigned long long* movs, unsigned long long info_in);
 void print_bit_board(const unsigned long long b);
 void print_board(unsigned long long* const board);
 static inline unsigned long long flipDiagA8H1(unsigned long long x);
+
+Move* create_move1(
+    int pc,unsigned long long mov,
+    unsigned long long info_in);
+
+Move* create_move2(
+    int pc1,unsigned long long mov1,
+    int pc2,unsigned long long mov2,
+    unsigned long long info_in);
+
+Move* create_move3(
+    int pc1,unsigned long long mov1,
+    int pc2,unsigned long long mov2,
+    int pc3,unsigned long long mov3,
+    unsigned long long info_in);
 
 unsigned long long get_white_rook_attacks(const unsigned long long* board, unsigned long long rook){
     static const unsigned long long diag = 0x0102040810204080; 
@@ -48,86 +62,6 @@ unsigned long long get_black_rook_attacks(const unsigned long long* board, unsig
     attacks |= (moves_rotated & FILE_A) >> (7 - file); 
    
     return attacks & ~board[BLACK_PCS];
-}
-
-unsigned long long old_get_white_rook_attacks(const unsigned long long* board, unsigned long long rook){
-    unsigned long long sqs_ahead, temp, mask, pcs_ahead, first_pc, spots, pcs_behind;
-    const unsigned long long whites = board[WHITE_PCS];
-    const unsigned long long blacks = board[BLACK_PCS];
-    const unsigned long long pcs = whites | blacks;
-    
-    int pos = __builtin_ctzll(rook);
-    const unsigned long long file = FILES[pos & 7];
-    const unsigned long long rank = RANKS[pos >> 3];
-    
-    // up
-    sqs_ahead = ~((rook - 1) | rook);
-    pcs_ahead = pcs & sqs_ahead;
-    first_pc = pcs_ahead & -(pcs_ahead & file) & file;
-    spots = ((first_pc - 1) & sqs_ahead & file) | (first_pc & blacks);
-    
-    // down
-    pcs_behind = pcs & (rook - 1);
-    temp = pcs_behind & file;
-    mask = (!temp) - 1;
-    first_pc = (A8 >> __builtin_clzll(temp)) & mask;
-    spots |= (rook - 1) & ~((first_pc - 1) | first_pc) & file;
-    spots |= first_pc & blacks;
-    spots |= file & (rook - 1) & ~mask;
-
-    // left
-    first_pc = pcs_ahead & -(pcs_ahead & rank) & rank;
-    spots |= ((first_pc - 1) & sqs_ahead & rank) | first_pc & blacks;
-    
-    // right
-    temp = pcs_behind & rank;
-    mask = (!temp) - 1;
-    first_pc = (A8 >> __builtin_clzll(temp)) & mask;
-    spots |= (rook - 1) & ~((first_pc - 1) | first_pc) & rank;
-    spots |= first_pc & blacks;
-    spots |= rank & (rook - 1) & ~mask;
-    
-    return spots;
-}
-
-unsigned long long old_get_black_rook_attacks(const unsigned long long* board, unsigned long long rook){
-    unsigned long long sqs_ahead, temp, mask, pcs_ahead, first_pc, spots, pcs_behind;
-    unsigned long long whites = board[WHITE_PCS];
-    unsigned long long blacks = board[BLACK_PCS];
-    unsigned long long pcs = whites | blacks;
-    
-    int pos = __builtin_ctzll(rook);
-    unsigned long long file = FILES[pos & 7];
-    unsigned long long rank = RANKS[pos >>3];
-    
-    // up
-    sqs_ahead = ~((rook - 1) | rook);
-    pcs_ahead = pcs & sqs_ahead;
-    first_pc = pcs_ahead & -(pcs_ahead & file) & file;
-    spots = ((first_pc - 1) & sqs_ahead & file) | (first_pc & whites);
-    
-    // down
-    pcs_behind = pcs & (rook - 1);
-    temp = pcs_behind & file;
-    mask = (!temp) - 1;
-    first_pc = (A8 >> __builtin_clzll(temp)) & mask;
-    spots |= (rook - 1) & ~((first_pc - 1) | first_pc) & file;
-    spots |= first_pc & whites;
-    spots |= file & (rook - 1) & ~mask;
-
-    // left
-    first_pc = pcs_ahead & -(pcs_ahead & rank) & rank;
-    spots |= ((first_pc - 1) & sqs_ahead & rank) | (first_pc & whites);
-    
-    // right
-    temp = pcs_behind & rank;
-    mask = (!temp) - 1;
-    first_pc = (A8 >> __builtin_clzll(temp)) & mask;
-    spots |= (rook - 1) & ~((first_pc - 1) | first_pc) & rank;
-    spots |= first_pc & whites;
-    spots |= rank & (rook - 1) & ~mask;
-
-    return spots;
 }
 
 unsigned long long new_get_white_bishop_attacks(const unsigned long long* board, unsigned long long bishop){
@@ -274,12 +208,8 @@ void get_white_knight_moves(Move*** movptr,const unsigned long long* board){
     const unsigned long long whites = board[WHITE_PCS];
     const unsigned long long blacks = board[BLACK_PCS];
 
-    int white_knight = WHITE_KNIGHT;
     unsigned long long knights = board[WHITE_KNIGHT];
     unsigned long long knight, taking_move, taken_piece;
-
-    unsigned long long m[2];
-    int p[] = {white_knight,-1};
 
     unsigned long long info_xor = TURN_BIT | (board[INFO] & ~RANK_1 & ~RANK_8);
 
@@ -288,16 +218,13 @@ void get_white_knight_moves(Move*** movptr,const unsigned long long* board){
         unsigned long long moves = KNIGHT_MOVES[__builtin_ctzll(knight)] & ~whites;
         for (unsigned long long clear_moves = moves & ~blacks; clear_moves; clear_moves &= (clear_moves - 1)){
             unsigned long long clear_move = (clear_moves & -clear_moves) | knight;
-            *(*movptr)++ = create_move(1,&white_knight,&clear_move,info_xor); 
+            *(*movptr)++ = create_move1(WHITE_KNIGHT,clear_move,info_xor); 
         }
         for (unsigned long long taking_moves = moves & blacks; taking_moves; taking_moves &= (taking_moves - 1)){
             taking_move = (taking_moves & -taking_moves) | knight;
             for (int pc = BLACK_PAWN; pc <= BLACK_QUEEN; pc++){
                 if (taken_piece = (taking_move & board[pc])){
-                    m[0] = taking_move;
-                    m[1] = taken_piece;
-                    p[1] = pc;
-                    *(*movptr)++ = create_move(2,p,m,info_xor);
+                    *(*movptr)++ = create_move2(WHITE_KNIGHT,taking_move,pc,taken_piece,info_xor);
                     break;
                 }
             }        
@@ -310,10 +237,6 @@ void get_black_knight_moves(Move*** movptr, const unsigned long long* board){
     const unsigned long long blacks = board[BLACK_PCS];
     unsigned long long knights = board[BLACK_KNIGHT];
     unsigned long long knight, taking_move, taken_piece;
-    int black_knight = BLACK_KNIGHT;
-
-    unsigned long long m[2];
-    int p[] = {black_knight,-1};
 
     unsigned long long info_xor = TURN_BIT | (board[INFO] & ~RANK_1 & ~RANK_8);
 
@@ -322,16 +245,13 @@ void get_black_knight_moves(Move*** movptr, const unsigned long long* board){
         unsigned long long moves = KNIGHT_MOVES[__builtin_ctzll(knight)] & ~blacks;
         for (unsigned long long clear_moves = moves & ~whites; clear_moves; clear_moves &= (clear_moves - 1)){
             unsigned long long clear_move = (clear_moves & (~clear_moves + 1)) | knight;
-            *(*movptr)++ = create_move(1,&black_knight,&clear_move,info_xor); 
+            *(*movptr)++ = create_move1(BLACK_KNIGHT,clear_move,info_xor); 
         }
         for (unsigned long long taking_moves = moves & whites; taking_moves; taking_moves &= (taking_moves - 1)){
             taking_move = (taking_moves & (~taking_moves + 1)) | knight;
             for (int pc = WHITE_PAWN; pc <= WHITE_QUEEN; pc++){
                 if (taken_piece = (taking_move & board[pc])){
-                    m[0] = taking_move,
-                    m[1] = taken_piece;
-                    p[1] = pc;
-                    *(*movptr)++ = create_move(2,p,m,info_xor);
+                    *(*movptr)++ = create_move2(BLACK_KNIGHT,taking_move,pc,taken_piece,info_xor);
                     break;
                 }
             }        
@@ -341,11 +261,9 @@ void get_black_knight_moves(Move*** movptr, const unsigned long long* board){
 
 void get_white_rook_moves(Move*** movptr, const unsigned long long* board){
     unsigned long long rooks = board[WHITE_ROOK];
-    int white_rook = WHITE_ROOK;
+
     unsigned long long pcs = board[WHITE_PCS] | board[BLACK_PCS];
     unsigned long long rook, spot, taken_piece; 
-    unsigned long long m[2];
-    int p[] = {white_rook,-1};
 
     unsigned long long info_xor = TURN_BIT | (board[INFO] & ~RANK_1 & ~RANK_8);
 
@@ -358,7 +276,7 @@ void get_white_rook_moves(Move*** movptr, const unsigned long long* board){
         unsigned long long castling_rights_info_xor = info_xor | (board[INFO] & rook & (WHITE_KINGSIDE_RIGHT | WHITE_QUEENSIDE_RIGHT));
         for(; spots; spots &= (spots - 1)){
             spot = (spots & (~spots + 1)) | rook;
-            *(*movptr)++ = create_move(1,&white_rook,&spot,castling_rights_info_xor);
+            *(*movptr)++ = create_move1(WHITE_ROOK,spot,castling_rights_info_xor);
         }
         
         // taking moves
@@ -366,10 +284,7 @@ void get_white_rook_moves(Move*** movptr, const unsigned long long* board){
             spot = (taking_spots & (~taking_spots + 1)) | rook;
             for (int pc = BLACK_PAWN; pc <= BLACK_QUEEN; pc++){
                 if (taken_piece = (spot & board[pc])){
-                    m[0] = spot;
-                    m[1] = taken_piece;
-                    p[1] = pc;
-                    *(*movptr)++ = create_move(2,p,m,castling_rights_info_xor);
+                    *(*movptr)++ = create_move2(WHITE_ROOK,spot,pc,taken_piece,castling_rights_info_xor);
                     break;
                 }
             }
@@ -379,11 +294,10 @@ void get_white_rook_moves(Move*** movptr, const unsigned long long* board){
 
 void get_black_rook_moves(Move*** movptr, const unsigned long long* board){
     unsigned long long rooks = board[BLACK_ROOK];
-    int black_rook = BLACK_ROOK;
+
     unsigned long long pcs = board[WHITE_PCS] | board[BLACK_PCS];
     unsigned long long rook, spot, taken_piece; 
-    unsigned long long m[2];
-    int p[] = {black_rook,-1};
+
 
     unsigned long long info_xor = TURN_BIT | (board[INFO] & ~RANK_1 & ~RANK_8);
 
@@ -394,7 +308,7 @@ void get_black_rook_moves(Move*** movptr, const unsigned long long* board){
         // empty moves
         for(unsigned long long spots = moves & ~board[WHITE_PCS]; spots; spots &= (spots - 1)){
             spot = (spots & (~spots + 1)) | rook;
-            *(*movptr)++ = create_move(1,&black_rook,&spot,castling_rights_info_xor);
+            *(*movptr)++ = create_move1(BLACK_ROOK,spot,castling_rights_info_xor);
         }
         
         // taking moves
@@ -402,10 +316,7 @@ void get_black_rook_moves(Move*** movptr, const unsigned long long* board){
             spot = (taking_spots & (~taking_spots + 1)) | rook;
             for (int pc = WHITE_PAWN; pc <= WHITE_QUEEN; pc++){
                 if (taken_piece = (spot & board[pc])){
-                    m[0] = spot;
-                    m[1] = taken_piece;
-                    p[1] = pc;
-                    *(*movptr)++ = create_move(2,p,m,castling_rights_info_xor);
+                    *(*movptr)++ = create_move2(BLACK_ROOK,spot,pc,taken_piece,castling_rights_info_xor);
                     break;
                 }
             }
@@ -418,12 +329,8 @@ void get_white_bishop_moves(Move*** movptr, const unsigned long long* board){
     const unsigned long long blacks = board[BLACK_PCS];
     unsigned long long bishops = board[WHITE_BISHOP];
     unsigned long long pcs = whites | blacks;
-    int white_bishop = WHITE_BISHOP;
     unsigned long long bishop, spot, taken_piece;
     
-    unsigned long long m[2];
-    int p[] = {white_bishop,-1};
-
     unsigned long long info_xor = TURN_BIT | (board[INFO] & ~RANK_1 & ~RANK_8);
 
     for (; bishops; bishops &= (bishops - 1)){
@@ -432,7 +339,7 @@ void get_white_bishop_moves(Move*** movptr, const unsigned long long* board){
         // empty moves
         for(unsigned long long spots = moves & ~blacks; spots; spots &= (spots - 1)){
             spot = (spots & (~spots + 1)) | bishop;
-            *(*movptr)++ = create_move(1,&white_bishop,&spot,info_xor);
+            *(*movptr)++ = create_move1(WHITE_BISHOP,spot,info_xor);
         }
         
         // taking moves
@@ -440,10 +347,7 @@ void get_white_bishop_moves(Move*** movptr, const unsigned long long* board){
             spot = (taking_spots & (~taking_spots + 1)) | bishop;
             for (int pc = BLACK_PAWN; pc <= BLACK_QUEEN; pc++){
                 if (taken_piece = (spot & board[pc])){
-                    m[0] = spot;
-                    m[1] = taken_piece;
-                    p[1] = pc;
-                    *(*movptr)++ = create_move(2,p,m,info_xor);
+                    *(*movptr)++ = create_move2(WHITE_BISHOP,spot,pc,taken_piece,info_xor);
                     break;
                 }
             }
@@ -454,11 +358,9 @@ void get_white_bishop_moves(Move*** movptr, const unsigned long long* board){
 void get_black_bishop_moves(Move*** movptr,const unsigned long long* board){
     const unsigned long long whites = board[WHITE_PCS];
     unsigned long long bishops = board[BLACK_BISHOP];
-    int black_bishop = BLACK_BISHOP;
+
     unsigned long long bishop, spot, taken_piece;
     
-    unsigned long long m[2];
-    int p[] = {black_bishop,-1};
 
     unsigned long long info_xor = TURN_BIT | (board[INFO] & ~RANK_1 & ~RANK_8);
 
@@ -468,17 +370,14 @@ void get_black_bishop_moves(Move*** movptr,const unsigned long long* board){
         
         for(unsigned long long spots = moves & ~whites; spots; spots &= (spots - 1)){
             spot = (spots & (~spots + 1)) | bishop;
-            *(*movptr)++ = create_move(1,&black_bishop,&spot,info_xor);
+            *(*movptr)++ = create_move1(BLACK_BISHOP,spot,info_xor);
         }
         // taking moves
         for(unsigned long long taking_spots = moves & whites; taking_spots; taking_spots &= (taking_spots - 1)){
             spot = (taking_spots & (~taking_spots + 1)) | bishop;
             for (int pc = WHITE_PAWN; pc <= WHITE_QUEEN; pc++){
                 if (taken_piece = (spot & board[pc])){
-                    m[0] = spot;
-                    m[1] = taken_piece;
-                    p[1] = pc;
-                    *(*movptr)++ = create_move(2,p,m,info_xor);
+                    *(*movptr)++ = create_move2(BLACK_BISHOP,spot,pc,taken_piece,info_xor);
                     break;
                 }
             }
@@ -492,13 +391,6 @@ void get_white_pawn_moves(Move*** movptr,const unsigned long long* board){
     unsigned long long pawns = board[WHITE_PAWN];
     unsigned long long pcs = whites | blacks;
     unsigned long long spot, taken_piece, promotion_sq;
-    int white_pawn = WHITE_PAWN;
-    int black_pawn = BLACK_PAWN;
-
-    unsigned long long m[2];
-    unsigned long long m3[3];
-    int p[] = {white_pawn,-1};
-    int p3[] = {white_pawn,-1,-1};
 
     unsigned long long info_xor = TURN_BIT | (board[INFO] & ~RANK_1 & ~RANK_8);
 
@@ -507,18 +399,12 @@ void get_white_pawn_moves(Move*** movptr,const unsigned long long* board){
         spot = (one_step & (~one_step + 1));
         spot |= spot >> 8;
         if (promotion_sq = (spot & RANK_8)){
-            m[0] = spot;
-            m[1] = promotion_sq;
-            p[1] = WHITE_KNIGHT;
-            *(*movptr)++ = create_move(2,p,m,info_xor);
-            p[1] = WHITE_BISHOP;
-            *(*movptr)++ = create_move(2,p,m,info_xor);
-            p[1] = WHITE_ROOK;
-            *(*movptr)++ = create_move(2,p,m,info_xor);
-            p[1] = WHITE_QUEEN;
-            *(*movptr)++ = create_move(2,p,m,info_xor);
+            *(*movptr)++ = create_move2(WHITE_PAWN,spot,WHITE_QUEEN,promotion_sq,info_xor);
+            *(*movptr)++ = create_move2(WHITE_PAWN,spot,WHITE_KNIGHT,promotion_sq,info_xor);
+            *(*movptr)++ = create_move2(WHITE_PAWN,spot,WHITE_ROOK,promotion_sq,info_xor);
+            *(*movptr)++ = create_move2(WHITE_PAWN,spot,WHITE_BISHOP,promotion_sq,info_xor);
         } else {
-            *(*movptr)++ = create_move(1,&white_pawn,&spot,info_xor);
+            *(*movptr)++ = create_move1(WHITE_PAWN,spot,info_xor);
         }
     }
     // step forward two
@@ -526,7 +412,7 @@ void get_white_pawn_moves(Move*** movptr,const unsigned long long* board){
         spot = (two_step & (~two_step + 1));
         unsigned long long info_xor_with_enpassent = (spot >> 8) | info_xor; // creating en passent
         spot |= spot >> 16;
-        *(*movptr)++ = create_move(1,&white_pawn,&spot,info_xor_with_enpassent);
+        *(*movptr)++ = create_move1(WHITE_PAWN,spot,info_xor_with_enpassent);
     }
 
     // taking right
@@ -536,23 +422,12 @@ void get_white_pawn_moves(Move*** movptr,const unsigned long long* board){
         for (int pc = BLACK_PAWN; pc <= BLACK_QUEEN; pc++){
             if (taken_piece = (spot & board[pc])){
                 if (promotion_sq = (spot & RANK_8)){
-                    m3[0] = spot;
-                    m3[1] = taken_piece;
-                    m3[2] = promotion_sq;
-                    p3[1] = pc;
-                    p3[2] = WHITE_QUEEN;
-                    *(*movptr)++ = create_move(3,p3,m3,info_xor);
-                    p3[2] = WHITE_KNIGHT;
-                    *(*movptr)++ = create_move(3,p3,m3,info_xor);
-                    p3[2] = WHITE_BISHOP;
-                    *(*movptr)++ = create_move(3,p3,m3,info_xor);
-                    p3[2] = WHITE_ROOK;
-                    *(*movptr)++ = create_move(3,p3,m3,info_xor);
+                    *(*movptr)++ = create_move3(WHITE_PAWN,spot,pc,taken_piece,WHITE_QUEEN,promotion_sq,info_xor);
+                    *(*movptr)++ = create_move3(WHITE_PAWN,spot,pc,taken_piece,WHITE_KNIGHT,promotion_sq,info_xor);
+                    *(*movptr)++ = create_move3(WHITE_PAWN,spot,pc,taken_piece,WHITE_ROOK,promotion_sq,info_xor);
+                    *(*movptr)++ = create_move3(WHITE_PAWN,spot,pc,taken_piece,WHITE_BISHOP,promotion_sq,info_xor);
                 } else {
-                    m[0] = spot;
-                    m[1] = taken_piece;
-                    p[1] = pc;
-                    *(*movptr)++ = create_move(2,p,m,info_xor);
+                    *(*movptr)++ = create_move2(WHITE_PAWN,spot,pc,taken_piece,info_xor);
                 }
                 break;
             }
@@ -565,23 +440,12 @@ void get_white_pawn_moves(Move*** movptr,const unsigned long long* board){
         for (int pc = BLACK_PAWN; pc <= BLACK_QUEEN; pc++){
             if (taken_piece = (spot & board[pc])){
                 if (promotion_sq = (spot & RANK_8)){
-                    m3[0] = spot;
-                    m3[1] = taken_piece;
-                    m3[2] = promotion_sq;
-                    p3[1] = pc;
-                    p3[2] = WHITE_QUEEN;
-                    *(*movptr)++ = create_move(3,p3,m3,info_xor);
-                    p3[2] = WHITE_KNIGHT;
-                    *(*movptr)++ = create_move(3,p3,m3,info_xor);
-                    p3[2] = WHITE_BISHOP;
-                    *(*movptr)++ = create_move(3,p3,m3,info_xor);
-                    p3[2] = WHITE_ROOK;
-                    *(*movptr)++ = create_move(3,p3,m3,info_xor);
+                    *(*movptr)++ = create_move3(WHITE_PAWN,spot,pc,taken_piece,WHITE_QUEEN,promotion_sq,info_xor);
+                    *(*movptr)++ = create_move3(WHITE_PAWN,spot,pc,taken_piece,WHITE_KNIGHT,promotion_sq,info_xor);
+                    *(*movptr)++ = create_move3(WHITE_PAWN,spot,pc,taken_piece,WHITE_ROOK,promotion_sq,info_xor);
+                    *(*movptr)++ = create_move3(WHITE_PAWN,spot,pc,taken_piece,WHITE_BISHOP,promotion_sq,info_xor);
                 } else {
-                    m[0] = spot;
-                    m[1] = taken_piece;
-                    p[1] = pc;
-                    *(*movptr)++ = create_move(2,p,m,info_xor);
+                    *(*movptr)++ = create_move2(WHITE_PAWN,spot,pc,taken_piece,info_xor);
                 }
                 break;
             }
@@ -589,18 +453,15 @@ void get_white_pawn_moves(Move*** movptr,const unsigned long long* board){
     }
     // taking en passent 
     unsigned long long en_passent_take_left = ((pawns << 9) & board[INFO] & ~RANK_1);
-    p[1] = black_pawn;
     if (en_passent_take_left){
-        m[0] = en_passent_take_left | (en_passent_take_left >> 9);
-        m[1] = en_passent_take_left >> 8;
-        *(*movptr)++ = create_move(2,p,m,info_xor);
+        *(*movptr)++ = create_move2(WHITE_PAWN,en_passent_take_left | (en_passent_take_left >> 9),
+                                    BLACK_PAWN,en_passent_take_left >> 8,info_xor);
     }
     
     unsigned long long en_passent_take_right = ((pawns << 7) & board[INFO] & ~RANK_1);
     if (en_passent_take_right){
-        m[0] = en_passent_take_right | (en_passent_take_right >> 7);
-        m[1] = en_passent_take_right >> 8;
-        *(*movptr)++ = create_move(2,p,m,info_xor);
+        *(*movptr)++ = create_move2(WHITE_PAWN,en_passent_take_right | (en_passent_take_right >> 7),
+                                    BLACK_PAWN,en_passent_take_right >> 8,info_xor);
     }
 
 }
@@ -611,38 +472,26 @@ void get_black_pawn_moves(Move*** movptr,const unsigned long long* board){
     unsigned long long pawns = board[BLACK_PAWN];
     unsigned long long pcs = whites | blacks;
     unsigned long long spot, taken_piece, promotion_sq;
-    int black_pawn = BLACK_PAWN;
-    int white_pawn = BLACK_PAWN;
 
-    unsigned long long m[2];
-    unsigned long long m3[3];
-    int p[] = {black_pawn,-1};
-    int p3[] = {black_pawn,-1,-1};
     unsigned long long info_xor = TURN_BIT | (board[INFO] & ~RANK_1 & ~RANK_8);
 
     for (unsigned long long one_step = (pawns >> 8) & ~pcs; one_step; one_step &= (one_step - 1)){
         spot = (one_step & (~one_step + 1));
         spot |= spot << 8;
         if (promotion_sq = (spot & RANK_1)){
-            m[0] = spot;
-            m[1] = promotion_sq;
-            p[1] = BLACK_KNIGHT;
-            *(*movptr)++ = create_move(2,p,m,info_xor);
-            p[1] = BLACK_BISHOP;
-            *(*movptr)++ = create_move(2,p,m,info_xor);
-            p[1] = BLACK_ROOK;
-            *(*movptr)++ = create_move(2,p,m,info_xor);
-            p[1] = BLACK_QUEEN;
-            *(*movptr)++ = create_move(2,p,m,info_xor);
+            *(*movptr)++ = create_move2(BLACK_PAWN,spot,BLACK_QUEEN,promotion_sq,info_xor);
+            *(*movptr)++ = create_move2(BLACK_PAWN,spot,BLACK_KNIGHT,promotion_sq,info_xor);
+            *(*movptr)++ = create_move2(BLACK_PAWN,spot,BLACK_BISHOP,promotion_sq,info_xor);
+            *(*movptr)++ = create_move2(BLACK_PAWN,spot,BLACK_ROOK,promotion_sq,info_xor);
         } else {
-            *(*movptr)++ = create_move(1,&white_pawn,&spot,info_xor);
+            *(*movptr)++ = create_move1(WHITE_PAWN,spot,info_xor);
         }
     }
     for (unsigned long long two_step = ((pawns & RANK_7) >> 16) & ~((pcs) | (pcs >> 8)); two_step; two_step &= (two_step - 1)){
         spot = (two_step & (~two_step + 1));
         unsigned long long info_xor_with_enpassent = (spot << 8) | info_xor;
         spot |= spot << 16;
-        *(*movptr)++ = create_move(1,&black_pawn,&spot,info_xor_with_enpassent);
+        *(*movptr)++ = create_move1(BLACK_PAWN,spot,info_xor_with_enpassent);
     }
     for (unsigned long long take_right = (pawns >> 9) & whites & ~FILE_A; take_right; take_right &= (take_right - 1)){
         spot = (take_right & (~take_right + 1));
@@ -650,23 +499,12 @@ void get_black_pawn_moves(Move*** movptr,const unsigned long long* board){
         for (int pc = WHITE_PAWN; pc <= WHITE_QUEEN; pc++){
             if (taken_piece = (spot & board[pc])){
                 if (promotion_sq = (spot & RANK_1)){
-                    m3[0] = spot;
-                    m3[1] = taken_piece;
-                    m3[2] = promotion_sq;
-                    p3[1] = pc;
-                    p3[2] = BLACK_QUEEN;
-                    *(*movptr)++ = create_move(3,p3,m3,info_xor);
-                    p3[2] = BLACK_KNIGHT;
-                    *(*movptr)++ = create_move(3,p3,m3,info_xor);
-                    p3[2] = BLACK_BISHOP;
-                    *(*movptr)++ = create_move(3,p3,m3,info_xor);
-                    p3[2] = BLACK_ROOK;
-                    *(*movptr)++ = create_move(3,p3,m3,info_xor);
+                    *(*movptr)++ = create_move3(BLACK_PAWN,spot,pc,taken_piece,BLACK_QUEEN,promotion_sq,info_xor);
+                    *(*movptr)++ = create_move3(BLACK_PAWN,spot,pc,taken_piece,BLACK_KNIGHT,promotion_sq,info_xor);
+                    *(*movptr)++ = create_move3(BLACK_PAWN,spot,pc,taken_piece,BLACK_BISHOP,promotion_sq,info_xor);
+                    *(*movptr)++ = create_move3(BLACK_PAWN,spot,pc,taken_piece,BLACK_ROOK,promotion_sq,info_xor);
                 } else {
-                    m[0] = spot;
-                    m[1] = taken_piece;
-                    p[1] = pc;
-                    *(*movptr)++ = create_move(2,p,m,info_xor);
+                    *(*movptr)++ = create_move2(BLACK_PAWN,spot,pc,taken_piece,info_xor);
                 }
                 break;
             }
@@ -678,23 +516,12 @@ void get_black_pawn_moves(Move*** movptr,const unsigned long long* board){
         for (int pc = WHITE_PAWN; pc <= WHITE_QUEEN; pc++){
             if (taken_piece = (spot & board[pc])){
                 if (promotion_sq = (spot & RANK_1)){
-                    m3[0] = spot;
-                    m3[1] = taken_piece;
-                    m3[2] = promotion_sq;
-                    p3[1] = pc;
-                    p3[2] = BLACK_QUEEN;
-                    *(*movptr)++ = create_move(3,p3,m3,info_xor);
-                    p3[2] = BLACK_KNIGHT;
-                    *(*movptr)++ = create_move(3,p3,m3,info_xor);
-                    p3[2] = BLACK_BISHOP;
-                    *(*movptr)++ = create_move(3,p3,m3,info_xor);
-                    p3[2] = BLACK_ROOK;
-                    *(*movptr)++ = create_move(3,p3,m3,info_xor);
+                    *(*movptr)++ = create_move3(BLACK_PAWN,spot,pc,taken_piece,BLACK_QUEEN,promotion_sq,info_xor);
+                    *(*movptr)++ = create_move3(BLACK_PAWN,spot,pc,taken_piece,BLACK_KNIGHT,promotion_sq,info_xor);
+                    *(*movptr)++ = create_move3(BLACK_PAWN,spot,pc,taken_piece,BLACK_BISHOP,promotion_sq,info_xor);
+                    *(*movptr)++ = create_move3(BLACK_PAWN,spot,pc,taken_piece,BLACK_ROOK,promotion_sq,info_xor);
                 } else {
-                    m[0] = spot;
-                    m[1] = taken_piece;
-                    p[1] = pc;
-                    *(*movptr)++ = create_move(2,p,m,info_xor);
+                    *(*movptr)++ = create_move2(BLACK_PAWN,spot,pc,taken_piece,info_xor);
                 }
                 break;
             }
@@ -703,18 +530,15 @@ void get_black_pawn_moves(Move*** movptr,const unsigned long long* board){
 
     // taking en passent 
     unsigned long long en_passent_take_left = ((pawns >> 7) & board[INFO] & ~RANK_1);
-    p[1] = black_pawn;
     if (en_passent_take_left){
-        m[0] = en_passent_take_left | (en_passent_take_left << 7);
-        m[1] = en_passent_take_left << 8;
-        *(*movptr)++ = create_move(2,p,m,info_xor);
+        *(*movptr)++ = create_move2(BLACK_PAWN,en_passent_take_left | (en_passent_take_left << 7),
+                                   WHITE_PAWN,en_passent_take_left << 8,info_xor);
     }
     
     unsigned long long en_passent_take_right = ((pawns >> 9) & board[INFO] & ~RANK_1);
     if (en_passent_take_right){
-        m[0] = en_passent_take_right | (en_passent_take_right << 9);
-        m[1] = en_passent_take_right << 8;
-        *(*movptr)++ = create_move(2,p,m,info_xor);
+        *(*movptr)++ = create_move2(BLACK_PAWN,en_passent_take_right | (en_passent_take_right << 9),
+                                   WHITE_PAWN,en_passent_take_right << 8,info_xor);
     }
 }
 
@@ -724,25 +548,19 @@ void get_white_king_moves(Move*** movptr,const unsigned long long* board){
     unsigned long long king = board[WHITE_KING];
     unsigned long long moves = KING_MOVES[__builtin_ctzll(king)] & ~whites;
     unsigned long long move, taken_piece;
-    int white_king = WHITE_KING;
 
-    const unsigned long long info_xor = TURN_BIT | ((~RANK_8) & board[INFO]);
+    const unsigned long long info_xor = TURN_BIT | ((WHITE_KINGSIDE_RIGHT | WHITE_QUEENSIDE_RIGHT) & board[INFO]);
 
-    unsigned long long m[2];
-    int p[] = {white_king,-1};
     for(unsigned long long clear_moves = moves & ~blacks; clear_moves; clear_moves &= (clear_moves - 1)){
         move = (clear_moves & (-clear_moves)) | king;
-        *(*movptr)++ = create_move(1, &white_king, &move, info_xor);
+        *(*movptr)++ = create_move1(WHITE_KING, move, info_xor);
     }
     
     for(unsigned long long taking_moves = moves & blacks; taking_moves; taking_moves &= (taking_moves - 1)){
         move = (taking_moves & (-taking_moves)) | king;
         for (int pc = BLACK_PAWN; pc < BLACK_KING; pc++){
             if (taken_piece = board[pc] & move){
-                m[0] = move;
-                m[1] = taken_piece;
-                p[1] = pc;
-                *(*movptr)++ = create_move(2,p,m, info_xor);
+                *(*movptr)++ = create_move2(WHITE_KING,move,pc,taken_piece,info_xor);
             }
         }        
     } 
@@ -750,24 +568,18 @@ void get_white_king_moves(Move*** movptr,const unsigned long long* board){
     if ((board[INFO] & WHITE_KINGSIDE_RIGHT) && 
     ((WHITE_KINGSIDE_SPACE & (whites | blacks)) == 0) &&
     (board[WHITE_ROOK] & FILE_H & RANK_1)){
-        attacks = get_white_attackers(board);
+        attacks = get_black_attackers(board);
         if ((attacks & WHITE_KINGSIDE_ATTACKED) == 0){
-            m[0] = 0b1010ULL;
-            m[1] = 0b0101ULL;
-            p[1] = WHITE_ROOK;
-            *(*movptr)++ = create_move(2,p,m, info_xor);
+            *(*movptr)++ = create_move2(WHITE_KING,0b1010ULL,WHITE_ROOK,0b0101ULL,info_xor);
         }
     }
     if ((board[INFO] & WHITE_QUEENSIDE_RIGHT) && 
         ((WHITE_QUEENSIDE_SPACE & (whites | blacks)) == 0) &&
         ((board[WHITE_ROOK] & FILE_A & RANK_1))){
-            if (attacks == 0) attacks = get_white_attackers(board);
+            if (attacks == 0) attacks = get_black_attackers(board);
             
             if ((attacks & WHITE_QUEENSIDE_ATTACKED) == 0){
-                m[0] = 0b101000ULL;
-                m[1] = 0b10010000ULL;
-                p[1] = WHITE_ROOK;
-                *(*movptr)++ = create_move(2,p,m, info_xor);
+                *(*movptr)++ = create_move2(WHITE_KING,0b101000ULL,WHITE_ROOK,0b10010000ULL,info_xor);
             }
     }
 
@@ -779,25 +591,20 @@ void get_black_king_moves(Move*** movptr,const unsigned long long* board){
     unsigned long long king = board[BLACK_KING];
     unsigned long long moves = KING_MOVES[__builtin_ctzll(king)] & ~blacks;
     unsigned long long move, taken_piece;
-    int black_king = BLACK_KING;
 
-    const unsigned long long info_xor = TURN_BIT | ((~RANK_1) & board[INFO]);
 
-    unsigned long long m[2];
-    int p[] = {black_king,-1};
+    const unsigned long long info_xor = TURN_BIT | ((BLACK_KINGSIDE_RIGHT | BLACK_QUEENSIDE_RIGHT) & board[INFO]);
+
     for(unsigned long long clear_moves = moves & ~whites; clear_moves; clear_moves &= clear_moves - 1){
         move = (clear_moves & (-clear_moves)) | king;
-        *(*movptr)++ = create_move(1,&black_king,&move,info_xor);
+        *(*movptr)++ = create_move1(BLACK_KING,move,info_xor);
     }
 
     for(unsigned long long taking_moves = moves & whites; taking_moves; taking_moves &= taking_moves - 1){
         move = (taking_moves & (-taking_moves)) | king;
         for (int pc = WHITE_PAWN; pc < WHITE_KING; pc++){
             if (taken_piece = board[pc] & move){
-                m[0] = move;
-                m[1] = taken_piece;
-                p[1] = pc;
-                *(*movptr)++ = create_move(2,p,m,info_xor);
+                *(*movptr)++ = create_move2(BLACK_KING,move,pc,taken_piece,info_xor);
             }
         }        
     }
@@ -805,25 +612,19 @@ void get_black_king_moves(Move*** movptr,const unsigned long long* board){
     if ((board[INFO] & BLACK_KINGSIDE_RIGHT) && 
         ((BLACK_KINGSIDE_SPACE & (whites | blacks)) == 0) &&
         (board[BLACK_ROOK] & FILE_H & RANK_8)){
-            attacks = get_black_attackers(board);
+            attacks = get_white_attackers(board);
             if ((attacks & BLACK_KINGSIDE_ATTACKED) == 0){
-                m[0] = 0b1010ULL << 56;
-                m[1] = 0b0101ULL << 56;
-                p[1] = BLACK_ROOK;
-                *(*movptr)++ = create_move(2,p,m,info_xor);
+                *(*movptr)++ = create_move2(BLACK_KING,0b1010ULL << 56,BLACK_ROOK,0b0101ULL << 56,info_xor);
             }
     }
 
     if ((board[INFO] & BLACK_QUEENSIDE_RIGHT) && 
         ((BLACK_QUEENSIDE_SPACE & (whites | blacks)) == 0) &&
         (board[BLACK_ROOK] & FILE_A & RANK_8)){
-            if (attacks == 0) attacks = get_black_attackers(board);
+            if (attacks == 0) attacks = get_white_attackers(board);
             
             if ((attacks & BLACK_QUEENSIDE_ATTACKED) == 0){
-                m[0] = 0b101000ULL << 56;
-                m[1] = 0b10010000ULL << 56;
-                p[1] = BLACK_ROOK;
-                *(*movptr)++ = create_move(2,p,m,info_xor);
+                *(*movptr)++ = create_move2(BLACK_KING,0b101000ULL << 56,BLACK_ROOK,0b10010000ULL << 56,info_xor);
             }
     }
 }
@@ -831,12 +632,8 @@ void get_black_king_moves(Move*** movptr,const unsigned long long* board){
 void get_white_queen_moves(Move*** movptr, const unsigned long long* board){
     const unsigned long long blacks = board[BLACK_PCS];
     unsigned long long queens = board[WHITE_QUEEN];
-    int white_queen = WHITE_QUEEN;
     unsigned long long queen, spot, taken_piece;
     
-    unsigned long long m[2];
-    int p[] = {white_queen,-1};
-
     unsigned long long info_xor = TURN_BIT | (board[INFO] & ~RANK_1 & ~RANK_8);
 
     for (; queens; queens &= (queens - 1)){
@@ -845,17 +642,14 @@ void get_white_queen_moves(Move*** movptr, const unsigned long long* board){
         
         for(unsigned long long spots = moves & ~blacks; spots; spots &= (spots - 1)){
             spot = (spots & (~spots + 1)) | queen;
-            *(*movptr)++ = create_move(1,&white_queen,&spot,info_xor);
+            *(*movptr)++ = create_move1(WHITE_QUEEN,spot,info_xor);
         }
         // taking moves
         for(unsigned long long taking_spots = moves & blacks; taking_spots; taking_spots &= (taking_spots - 1)){
             spot = (taking_spots & (~taking_spots + 1)) | queen;
             for (int pc = BLACK_PAWN; pc <= BLACK_QUEEN; pc++){
                 if (taken_piece = (spot & board[pc])){
-                    m[0] = spot;
-                    m[1] = taken_piece;
-                    p[1] = pc;
-                    *(*movptr)++ = create_move(2,p,m,info_xor);
+                    *(*movptr)++ = create_move2(WHITE_QUEEN,spot,pc,taken_piece,info_xor);
                     break;
                 }
             }
@@ -866,11 +660,7 @@ void get_white_queen_moves(Move*** movptr, const unsigned long long* board){
 void get_black_queen_moves(Move*** movptr, const unsigned long long* board){
     const unsigned long long whites = board[WHITE_PCS];
     unsigned long long queens = board[BLACK_QUEEN];
-    int white_queen = BLACK_QUEEN;
     unsigned long long queen, spot, taken_piece;
-    
-    unsigned long long m[2];
-    int p[] = {white_queen,-1};
 
     unsigned long long info_xor = TURN_BIT | (board[INFO] & ~RANK_1 & ~RANK_8);
 
@@ -880,17 +670,14 @@ void get_black_queen_moves(Move*** movptr, const unsigned long long* board){
         
         for(unsigned long long spots = moves & ~whites; spots; spots &= (spots - 1)){
             spot = (spots & (~spots + 1)) | queen;
-            *(*movptr)++ = create_move(1,&white_queen,&spot,info_xor);
+            *(*movptr)++ = create_move1(WHITE_QUEEN,spot,info_xor);
         }
         // taking moves
         for(unsigned long long taking_spots = moves & whites; taking_spots; taking_spots &= (taking_spots - 1)){
             spot = (taking_spots & (~taking_spots + 1)) | queen;
             for (int pc = WHITE_PAWN; pc <= WHITE_QUEEN; pc++){
                 if (taken_piece = (spot & board[pc])){
-                    m[0] = spot;
-                    m[1] = taken_piece;
-                    p[1] = pc;
-                    *(*movptr)++ = create_move(2,p,m,info_xor);
+                    *(*movptr)++ = create_move2(WHITE_QUEEN,spot,pc,taken_piece,info_xor);
                     break;
                 }
             }

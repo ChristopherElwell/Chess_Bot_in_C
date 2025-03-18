@@ -9,8 +9,8 @@
 
 typedef struct {
      int num_xors;
-     unsigned long long int* mov;
-     int*  pc;
+     unsigned long long int mov1, mov2, mov3;
+     int pc1, pc2, pc3;
      unsigned long long int info;
 } Move;
 

@@ -68,26 +68,52 @@ void print_board(unsigned long long* const board){
 Move* copy_move(const Move* original) {
     if (!original) return NULL;
     
-    return create_move(original->num_xors, original->pc, original->mov, original->info);
+    switch (original->num_xors){
+        case 1:
+            return create_move1(original->pc1, original->mov1,original->info);
+        case 2:
+            return create_move2(original->pc1, original->mov1,
+                                original->pc2, original->mov2,
+                                original->info);
+        case 3:
+            return create_move3(original->pc1, original->mov1,
+                                original->pc2, original->mov2,
+                                original->pc3, original->mov3,
+                                original->info);
+    }
 }
-
 
 void print_move(Move* m){
     printf("PRINTING MOVE WITH %d PARTS\n",m->num_xors);
     
-    for (int i = 0; i < m->num_xors; i++){
-        printf("MOVING %s\n",PIECE_NAMES[m->pc[i]]);
-        print_bit_board(m->mov[i]);
+    printf("MOVING %s\n",PIECE_NAMES[m->pc1]);
+    print_bit_board(m->mov1);
+    
+    if (m->num_xors >= 2){
+        printf("MOVING %s\n",PIECE_NAMES[m->pc2]);
+        print_bit_board(m->mov2);
     }
+    if (m->num_xors == 3){
+        printf("MOVING %s\n",PIECE_NAMES[m->pc3]);
+        print_bit_board(m->mov3);
+    }
+
     printf("INFO\n");
     print_bit_board(m->info);
     printf("\n\n");
 }
 
 void apply_move(Move* m, unsigned long long* board){
-    for (int i = 0; i < m->num_xors; i++){
-        board[m->pc[i]] ^= m->mov[i];
+    
+    board[m->pc1] ^= m->mov1;
+    
+    if (m->num_xors >= 2){
+        board[m->pc2] ^= m->mov2;
     }
+    if (m->num_xors >= 3){
+        board[m->pc3] ^= m->mov3;
+    }
+    
     board[INFO] ^= m->info;
 
     board[WHITE_PCS] = board[WHITE_PAWN] |
@@ -105,37 +131,48 @@ void apply_move(Move* m, unsigned long long* board){
                        board[BLACK_KING]; 
 }
 
-void free_move(Move* m) {
-    if (m) {
-        free(m->mov);
-        free(m->pc);
-        free(m);
-    }
-}
-
-
-Move* create_move(int count,int* pcs,unsigned long long* movs,unsigned long long info_in){
+Move* create_move1(int pc,unsigned long long mov,unsigned long long info_in){
     Move* m = malloc(sizeof(Move));
     if (!m) return NULL;
-    m->mov = malloc(sizeof(unsigned long long) * count);
-    m->pc = malloc(sizeof(int) * count);
-    
-    if (!m->mov || !m->pc){
-        printf("CREATE MOVE RETURNING NULL");
-        free(m->mov);
-        free(m->pc);
-        free(m);
-        return NULL;
-    }
+    m->num_xors = 1;
+    m->mov1 = mov;
+    m->pc1 = pc;
+    m->info = info_in;
+}
 
-    for (int i = 0; i < count; i++){
-        m->pc[i] = pcs[i];
-        m->mov[i] = movs[i];
-    }
-    m->num_xors = count;
+Move* create_move2(
+    int pc1,unsigned long long mov1,
+    int pc2,unsigned long long mov2,
+    unsigned long long info_in){
+
+    Move* m = malloc(sizeof(Move));
+    if (!m) return NULL;
+    m->num_xors = 2;
+    m->mov1 = mov1;
+    m->pc1 = pc1;
+    m->mov2 = mov2;
+    m->pc2 = pc2;
     m->info = info_in;
 
-    return m;
+}
+
+Move* create_move3(
+    int pc1,unsigned long long mov1,
+    int pc2,unsigned long long mov2,
+    int pc3,unsigned long long mov3,
+    unsigned long long info_in){
+
+    Move* m = malloc(sizeof(Move));
+    if (!m) return NULL;
+    m->num_xors = 3;
+    m->mov1 = mov1;
+    m->pc1 = pc1;
+    m->mov2 = mov2;
+    m->pc2 = pc2;
+    m->mov3 = mov3;
+    m->pc3 = pc3;
+    m->info = info_in;
+
 }
 
 void prep_board(unsigned long long *board){
@@ -276,32 +313,42 @@ unsigned long long* from_FEN(const char* p){
 
 char* move_to_uci(Move* mov, unsigned long long* board){
     char *out = malloc(5);
-    unsigned long long starting_sq = mov->mov[0] & board[mov->pc[0]];
-    unsigned long long ending_sq = mov->mov[0] & ~board[mov->pc[0]];
+    unsigned long long starting_sq = mov->mov1 & board[mov->pc1];
+    unsigned long long ending_sq = mov->mov1 & ~board[mov->pc1];
     sprintf(out,"%s%s ",SQUARES[__builtin_ctzll(starting_sq)],SQUARES[__builtin_ctzll(ending_sq)]);
     printf("MOVE: %s\n",out);
-    if (mov->pc[0] == WHITE_PAWN && (ending_sq & RANK_8)){
-        for(int i = 1; i < mov->num_xors; i++){
-            switch (mov->pc[i]){
-                case 1:
-                    out[4] = 'n';
-                    return out;
-                case 2:
-                    out[4] = 'r';
-                    return out;
-                case 3:
-                    out[4] = 'b';
-                    return out;
-                case 4:
-                    out[4] = 'q';
-                    return out;
-
-            }
+    if (mov->pc1 == WHITE_PAWN && (ending_sq & RANK_8)){
+        switch (mov->pc2){
+            case 1:
+                out[4] = 'n';
+                return out;
+            case 2:
+                out[4] = 'r';
+                return out;
+            case 3:
+                out[4] = 'b';
+                return out;
+            case 4:
+                out[4] = 'q';
+                return out;
         }
-        
-    } else if (mov->pc[0] == BLACK_PAWN && (ending_sq & RANK_1)){
+        switch (mov->pc3){
+            case 1:
+                out[4] = 'n';
+                return out;
+            case 2:
+                out[4] = 'r';
+                return out;
+            case 3:
+                out[4] = 'b';
+                return out;
+            case 4:
+                out[4] = 'q';
+                return out;
+        }
+    } else if (mov->pc1 == BLACK_PAWN && (ending_sq & RANK_1)){
         for(int i = 1; i < mov->num_xors; i++){
-            switch (mov->pc[i]){
+            switch (mov->pc2){
                 case 7:
                     out[4] = 'n';
                     return out;
@@ -314,7 +361,20 @@ char* move_to_uci(Move* mov, unsigned long long* board){
                 case 10:
                     out[4] = 'q';
                     return out;
-
+            }
+            switch (mov->pc3){
+                case 7:
+                    out[4] = 'n';
+                    return out;
+                case 8:
+                    out[4] = 'r';
+                    return out;
+                case 9:
+                    out[4] = 'b';
+                    return out;
+                case 10:
+                    out[4] = 'q';
+                    return out;
             }
         }
     } else {

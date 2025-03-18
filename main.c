@@ -19,7 +19,9 @@
 char* get_bot_move(char* FEN){
     printf("%s\n",FEN);
     unsigned long long* board = from_FEN(FEN);
-    Move* bot_move = root_search(board,3);
+    Move* bot_move = root_search(board,4);
+    // print_board(board);
+    print_move(bot_move);
     return move_to_uci(bot_move,board);
 }
 
@@ -29,24 +31,24 @@ int evaluate(const unsigned long long* board){
     int mg_to_eg_counter = 0;
     int pos;
 
-    for (int i = WHITE_PAWN; i <= WHITE_KING; i++){
-        unsigned long long pc = board[i];
-        while (pc){
-            mg_to_eg_counter += mg_to_eg_values[i];
-            pos = __builtin_ctzll(pc);
-            mg_eval += mg_piece_tables[i][pos];
-            eg_eval += eg_piece_tables[i][pos];
-            pc = pc & (pc - 1);
+    for (int pc = WHITE_PAWN; pc <= WHITE_KING; pc++){
+        unsigned long long pc_board = board[pc];
+        while (pc_board){
+            mg_to_eg_counter += mg_to_eg_values[pc];
+            pos = __builtin_ctzll(pc_board);
+            mg_eval += mg_piece_table[pos+(pc<<6)];
+            eg_eval += eg_piece_table[pos+(pc<<6)];
+            pc_board &= (pc_board - 1);
         }
     }
-    for (int i = BLACK_PAWN; i <= BLACK_KING; i++){
-        unsigned long long pc = board[i];
-        while (pc){
-            mg_to_eg_counter += mg_to_eg_values[i];
-            pos = __builtin_ctzll(pc);
-            mg_eval -= mg_piece_tables[i][pos];
-            eg_eval -= eg_piece_tables[i][pos];
-            pc &= (pc - 1);
+    for (int pc = BLACK_PAWN; pc <= BLACK_KING; pc++){
+        unsigned long long pc_board = board[pc];
+        while (pc_board){
+            mg_to_eg_counter += mg_to_eg_values[pc];
+            pos = __builtin_ctzll(pc_board);
+            mg_eval -= mg_piece_table[pos+(pc<<6)];
+            eg_eval -= eg_piece_table[pos+(pc<<6)];
+            pc_board &= (pc_board - 1);
         }
     }
 
@@ -115,9 +117,17 @@ void receiver() {
 }
 
 int main() {
-    // receiver();
-    char* s = get_bot_move("rnbqkbnr/pppppppp/8/8/3P4/8/PPP1PPPP/RNBQKBNR b KQkq");
-    // printf("%s\n",s);
+    receiver();
+    // char* s = get_bot_move("rnbqkb1r/ppp1ppp1/5n1p/3p4/8/5NP1/PPPPPPBP/RNBQK2R w KQkq - 0 4");
+    // unsigned long long *board = from_FEN("rnbqkb1r/ppp1ppp1/5n1p/3p4/8/5NP1/PPPPPPBP/RNBQK2R w KQkq - 0 4");
+    // Move** movs = malloc(MOVES_ARRAY_LENGTH * sizeof(Move*));
+    // Move** movptr = movs;
+    // get_white_pawn_moves(&movptr,board);
+    // *movptr = NULL;
+    // for (Move** mov = movs; *mov != NULL; mov++){
+    //     print_move(*mov);
+    // }
+
     return 0;
 }
 

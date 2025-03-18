@@ -18,9 +18,8 @@ Move** get_white_moves(const unsigned long long* board);
 Move** get_black_moves(const unsigned long long* board);
 unsigned long long get_white_attackers(const unsigned long long* board);
 unsigned long long get_black_attackers(const unsigned long long* board);
-int search_white_move(unsigned long long* board, int iter);
-int search_black_move(unsigned long long* board, int iter);
-void free_move(Move* m);
+int search_white_move(unsigned long long* board, int alpha, int beta, int iter);
+int search_black_move(unsigned long long* board, int alpha, int beta, int iter);
 Move* copy_move(const Move* original);
 
 int max(int a, int b){
@@ -44,7 +43,7 @@ bool compare_boards(unsigned long long* board1,unsigned long long* board2){
     return true;
 }
 
-int search_white_move(unsigned long long* board, int iter){
+int search_white_move(unsigned long long* board, int alpha, int beta, int iter){
     unsigned long long original[BOARD_ARRAY_SIZE];
     for (int i = 0; i < BOARD_ARRAY_SIZE; i++){
         original[i] = board[i];
@@ -72,18 +71,22 @@ int search_white_move(unsigned long long* board, int iter){
 
         legal_moves++;
 
-        eval = search_black_move(board,iter-1);
+        eval = search_black_move(board,alpha,beta,iter-1);
         best_eval = max(best_eval,eval);
 
         apply_move(*movptr,board);
 
+        alpha = max(alpha,eval);
         if (eval > best_eval){
             best_move = copy_move(*movptr);
             best_eval = eval;
         }
+        free(*movptr);
         
-        free_move(*movptr);
-        
+        if (eval >= beta){
+            break;
+        } 
+
         assert(compare_boards(board,original));
 
     }
@@ -95,11 +98,11 @@ int search_white_move(unsigned long long* board, int iter){
             return 0;
         }
     }
-
+    free(movs);
     return best_eval;
 }
 
-int search_black_move(unsigned long long* board, int iter){
+int search_black_move(unsigned long long* board, int alpha, int beta, int iter){
     unsigned long long original[BOARD_ARRAY_SIZE];
     for (int i = 0; i < BOARD_ARRAY_SIZE; i++){
         original[i] = board[i];
@@ -126,16 +129,21 @@ int search_black_move(unsigned long long* board, int iter){
 
         legal_moves++;
 
-        eval = search_white_move(board,iter - 1);
+        eval = search_white_move(board,alpha,beta,iter - 1);
         
         apply_move(*movptr,board);
         
+        beta = min(eval,beta);
         if (eval < best_eval){
             best_move = copy_move(*movptr);
             best_eval = eval;
         }
         
-        free_move(*movptr);
+        free(*movptr);
+
+        if (eval <= alpha){
+            break;
+        }
         assert(compare_boards(board,original));
 
     }
@@ -147,7 +155,7 @@ int search_black_move(unsigned long long* board, int iter){
             return 0;
         }
     }
-
+    free(movs);
     return best_eval;
 }
 
@@ -157,13 +165,18 @@ Move* root_search(unsigned long long* board,int max_iter){
         original[i] = board[i];
     }
     int eval;
-    Move* best_move = NULL;
     int best_eval;
+    Move* best_move;
     if (board[INFO] & TURN_BIT){
         best_eval = INT_MIN;
         Move** movs = get_white_moves(board);
+        best_move = movs[0];
         for (Move** movptr = movs; *movptr != NULL; movptr++){
             apply_move(*movptr,board);
+            if ((board[INFO] & TURN_BIT) != 0){
+                printf("ERROR WITH %d\n",(*movptr)->pc1);
+                print_bit_board((*movptr)->info);
+            }
             assert((board[INFO] & TURN_BIT) == 0);
             
             if (board[WHITE_KING] & get_black_attackers(board)){
@@ -171,9 +184,10 @@ Move* root_search(unsigned long long* board,int max_iter){
                 continue;
             } 
             
-            eval = search_black_move(board,max_iter);
+            eval = search_black_move(board, INT_MIN, INT_MAX, max_iter);
             apply_move(*movptr,board);
             
+
             if (eval > best_eval){
                 best_eval = eval;
                 best_move = copy_move(*movptr);
@@ -182,31 +196,33 @@ Move* root_search(unsigned long long* board,int max_iter){
             // printf("EVAL: %d\n",eval);
             // print_move(*movptr);
             
-            free_move(*movptr);
+            free(*movptr);
             assert(compare_boards(board,original));
         }
         free(movs);
     } else {
         best_eval = INT_MAX;
         Move** movs = get_black_moves(board);
+        best_move = movs[0];
         for (Move** movptr = movs; *movptr != NULL; movptr++){
             apply_move(*movptr,board);
             assert((board[INFO] & TURN_BIT) != 0);
 
             if (board[BLACK_KING] & get_white_attackers(board)) {
                 apply_move(*movptr,board);
-                free_move(*movptr);
+                free(*movptr);
                 continue;
             }
             
-            eval = search_white_move(board,max_iter);
+            eval = search_white_move(board, INT_MIN, INT_MAX, max_iter);
             apply_move(*movptr,board);
             
-            if (eval > best_eval){
+            if (eval < best_eval){
                 best_eval = eval;
                 best_move = copy_move(*movptr);
             } 
-            free_move(*movptr);
+
+            free(*movptr);
             
             assert(compare_boards(board,original));
         }
