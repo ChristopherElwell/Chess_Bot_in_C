@@ -13,3 +13,5 @@ transposition table
 quiescence search
 aspiration windows
 Lichess API integration
+
+Written with only C standard library.
