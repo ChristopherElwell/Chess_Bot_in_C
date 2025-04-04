@@ -4,18 +4,21 @@ import tkinter as tk
 from PIL import Image, ImageTk
 import os
 import random
+import time
+from stockfish import Stockfish
 colours = ['#DCE6C9','#BCC6A9','#FCF6E9']
 
+LEVEL = 2
+stockfish = Stockfish(path = "C:\\Users\\chris\\OneDrive\\Desktop\\C_Chess\\stockfish\\stockfish-windows-x86-64-avx2.exe",
+                      parameters={"Threads":2,"Hash":512})
 SRC_DIR = "src"
 C_FILE = os.path.join(SRC_DIR, "main.c")
-EXE_FILE = os.path.join(SRC_DIR, "main.exe")
+EXE_FILE = os.path.join(SRC_DIR, "chess_release.exe")
 
 class window(tk.Tk):
     def __init__(self):
         super().__init__()
-        compile()
-        bot = start_bot()
-        
+        self.bot = start_bot()
         size = 500
         self.sqr_size = size / 8
         self.selected_piece = (-1,-1)
@@ -30,10 +33,10 @@ class window(tk.Tk):
         self.input_fen_btn = tk.Button(self,text="Input Fen",command = self.input_fen)
         self.input_fen_btn.place(x=size,y=size/4,width = 100,height = 60,anchor='nw')
         
-        # self.run_test = tk.Button(self,text="Run Test",command = lambda: pass)
-        # self.run_test.place(x=size,y=size / 2,width = 100,height = 60,anchor='nw')
+        self.start_game_btn = tk.Button(self,text="Start Game",command = lambda: self.start_game(LEVEL))
+        self.start_game_btn.place(x=size,y=size / 2,width = 100,height = 60,anchor='nw')
         
-        self.get_bot_move = tk.Button(self,text="Get Bot Move",command = lambda: self.run_bot(bot,self.board.fen()))
+        self.get_bot_move = tk.Button(self,text="Get Bot Move",command = lambda: self.run_bot(self.bot,self.board.fen()))
         self.get_bot_move.place(x=size,y=size * 3/4,width = 100,height = 60,anchor='nw')
         
         self.piece_img_map = {
@@ -126,20 +129,23 @@ class window(tk.Tk):
         else:
             print("move is not legal", bot_return)
 
-def compile():
-    if os.path.exists(EXE_FILE):
-        os.remove(EXE_FILE)
-
-    compile_cmd = ["gcc", C_FILE, "-o", EXE_FILE]
-    result = subprocess.run(compile_cmd, capture_output=True, text=True)
-
-    if result.returncode != 0:
-        print("Compilation failed!")
-        print(result.stderr)
-        return False
-
-    print("Compilation successful!")
-    return True
+    def start_game(self,level):
+        print("GAME STARTED AT LEVEL:",level)
+        self.board.set_board_fen("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR")
+        stockfish.set_skill_level(level)
+        while(True):
+            stockfish.set_fen_position(self.board.fen())
+            fish_move = stockfish.get_best_move()
+            self.board.push(chess.Move.from_uci(fish_move))
+            self.draw_board(self.get_piece_map(self.board))
+            print("STOCKFISH PLAYS",fish_move)
+            self.update_idletasks()
+            bot_move = call_bot(self.bot,f"PLAY {self.board.fen()}")
+            print("BOT PLAYS",bot_move)
+            self.board.push(chess.Move.from_uci(bot_move))
+            self.draw_board(self.get_piece_map(self.board))
+            self.update_idletasks()
+        
 
 def call_bot(process, message):
     command = f"GET {message}\n"

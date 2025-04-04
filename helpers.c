@@ -1,45 +1,36 @@
+#include "helpers.h"
 #include "constants.h"
-#include "func_defs.h"
+#include "search.h"
+#include "get_moves.h"
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
 
-void free_board(unsigned long long* board) {
+// helper functions, many are used to print different data structures, convert encodings from one to another, freeing heap allocated memory, and various other micro-tasks
+
+
+// MEMORY FREEING FUNCTIONS
+
+void free_search_result(searchResult* sr){
+    while(sr!=NULL){
+        searchResult* next = sr->best_result;
+        free(sr);
+        sr = next;
+    }
+}
+
+void free_board(uint64_t* board) {
     if (board != NULL) {
         free(board);
     }
 }
 
-static inline unsigned long long flipDiagA8H1(unsigned long long x) {
-    unsigned long long t;
-    const static unsigned long long k1 = 0x5500550055005500ULL;
-    const static unsigned long long k2 = 0x3333000033330000ULL;
-    const static unsigned long long k4 = 0x0f0f0f0f00000000ULL;
-    t  = k4 & (x ^ (x << 28));
-    x ^=       t ^ (t >> 28) ;
-    t  = k2 & (x ^ (x << 14));
-    x ^=       t ^ (t >> 14) ;
-    t  = k1 & (x ^ (x <<  7));
-    x ^=       t ^ (t >>  7) ;
-    return x;
- }
+// 
 
-unsigned long long flipDiagA1H8(unsigned long long x) {
-    unsigned long long t;
-    const unsigned long long k1 = 0xaa00aa00aa00aa00ULL;
-    const unsigned long long k2 = 0xcccc0000cccc0000ULL;
-    const unsigned long long k4 = 0xf0f0f0f00f0f0f0fULL;
-    t  =       x ^ (x << 36) ;
-    x ^= k4 & (t ^ (x >> 36));
-    t  = k2 & (x ^ (x << 18));
-    x ^=       t ^ (t >> 18) ;
-    t  = k1 & (x ^ (x <<  9));
-    x ^=       t ^ (t >>  9) ;
-    return x;
- }
 
-unsigned long long int sq_from_name(char file, char rank){
-    return RANKS[rank - '1'] & FILES['h' - file];
-}
+// PRINTING FUNCTIONS
 
-void print_bit_board(const unsigned long long b){
+void print_bit_board(const uint64_t b){
     for (int i = 0; i < 64; i++){
         if(i%8 == 0){
             printf("%d ",8 - i/8);
@@ -56,7 +47,7 @@ void print_bit_board(const unsigned long long b){
     printf("  a b c d e f g h\n\n");
 }
 
-void print_board(unsigned long long* const board){
+void print_board(uint64_t* const board){
     printf("------PRINTING BOARD-----\n\n");
     for (int i = WHITE_PAWN; i <= BLACK_KING; i++){
         printf("BOARD OF %s\n",PIECE_NAMES[i]);
@@ -65,35 +56,17 @@ void print_board(unsigned long long* const board){
     }
 }
 
-Move* copy_move(const Move* original) {
-    if (!original) return NULL;
-    
-    switch (original->num_xors){
-        case 1:
-            return create_move1(original->pc1, original->mov1,original->info);
-        case 2:
-            return create_move2(original->pc1, original->mov1,
-                                original->pc2, original->mov2,
-                                original->info);
-        case 3:
-            return create_move3(original->pc1, original->mov1,
-                                original->pc2, original->mov2,
-                                original->pc3, original->mov3,
-                                original->info);
-    }
-}
-
 void print_move(Move* m){
-    printf("PRINTING MOVE WITH %d PARTS\n",m->num_xors);
+    printf("PRINTING %s MOVE\n",MOVE_TYPES[m->type]);
     
     printf("MOVING %s\n",PIECE_NAMES[m->pc1]);
     print_bit_board(m->mov1);
     
-    if (m->num_xors >= 2){
+    if (m->type == CAPTURE || m->type == PROMOTE){
         printf("MOVING %s\n",PIECE_NAMES[m->pc2]);
         print_bit_board(m->mov2);
     }
-    if (m->num_xors == 3){
+    if (m->type == CAPTURE_PROMOTE){
         printf("MOVING %s\n",PIECE_NAMES[m->pc3]);
         print_bit_board(m->mov3);
     }
@@ -103,97 +76,133 @@ void print_move(Move* m){
     printf("\n\n");
 }
 
-void apply_move(Move* m, unsigned long long* board){
+void print_move_short(Move* m){
+    switch(m->type){
+        case EMPTY:
+            printf("%s | %s\n",MOVE_TYPES[m->type],PIECE_NAMES[m->pc1]);
+            return;
+        case CAPTURE:
+            printf("%s | %s takes %s\n",MOVE_TYPES[m->type],PIECE_NAMES[m->pc1],PIECE_NAMES[m->pc2]);
+            return;
+        case PROMOTE:
+            printf("%s | %s promotes to %s\n",MOVE_TYPES[m->type],PIECE_NAMES[m->pc1],PIECE_NAMES[m->pc2]);
+            return;
+        case CAPTURE_PROMOTE:
+            printf("%s | %s takes %s and promotes to %s\n",MOVE_TYPES[m->type],PIECE_NAMES[m->pc1],PIECE_NAMES[m->pc2],PIECE_NAMES[m->pc3]);
+            return;
+        case BOOK_END:
+            printf("BOOKEND\n");
+            return;
+    }
+}
+
+void print_principal_variation(searchResult* sr, uint64_t* board){
+    Move* princ_variation[50];
+    int mov_counter = 0;
+    while(sr != NULL && sr->best_move.type != BOOK_END){;
+        princ_variation[mov_counter++] = &(sr->best_move);
+        sr = sr->best_result;
+    }
+    for (int i = 0; i < mov_counter; i++){
+        char* move = move_to_uci(princ_variation[i],board);
+        apply_move(princ_variation[i],board);
+        printf("%s,",move);
+    }
+    for (int i = mov_counter - 1; i >= 0; i--){
+        apply_move(princ_variation[i],board);
+    }
+    printf("\n");
+}
+
+// APPLY, CREATE, AND COPY MOVE STRUCT FUNCTIONS
+void apply_move(Move* m, uint64_t* board){
     
     board[m->pc1] ^= m->mov1;
-    
-    if (m->num_xors >= 2){
-        board[m->pc2] ^= m->mov2;
-    }
-    if (m->num_xors >= 3){
-        board[m->pc3] ^= m->mov3;
-    }
+    board[m->pc2] ^= m->mov2;
+    board[m->pc3] ^= m->mov3;
     
     board[INFO] ^= m->info;
-
+    
     board[WHITE_PCS] = board[WHITE_PAWN] |
-                       board[WHITE_KNIGHT] |
-                       board[WHITE_BISHOP] |
-                       board[WHITE_ROOK] |
-                       board[WHITE_QUEEN] |
-                       board[WHITE_KING]; 
+    board[WHITE_KNIGHT] |
+    board[WHITE_BISHOP] |
+    board[WHITE_ROOK] |
+    board[WHITE_QUEEN] |
+    board[WHITE_KING]; 
     
     board[BLACK_PCS] = board[BLACK_PAWN] |
-                       board[BLACK_KNIGHT] |
-                       board[BLACK_BISHOP] |
-                       board[BLACK_ROOK] |
-                       board[BLACK_QUEEN] |
-                       board[BLACK_KING]; 
+    board[BLACK_KNIGHT] |
+    board[BLACK_BISHOP] |
+    board[BLACK_ROOK] |
+    board[BLACK_QUEEN] |
+    board[BLACK_KING]; 
 }
 
-Move* create_move1(int pc,unsigned long long mov,unsigned long long info_in){
-    Move* m = malloc(sizeof(Move));
-    if (!m) return NULL;
-    m->num_xors = 1;
+inline Move* create_move1(Move* m,int pc,uint64_t mov,uint64_t info_in){
+    m->type = EMPTY;
     m->mov1 = mov;
     m->pc1 = pc;
+    m->mov2 = 0;
+    m->pc2 = 0;
+    m->mov3 = 0;
+    m->pc3 = 0;
     m->info = info_in;
+    return m + 1;
 }
 
-Move* create_move2(
-    int pc1,unsigned long long mov1,
-    int pc2,unsigned long long mov2,
-    unsigned long long info_in){
-
-    Move* m = malloc(sizeof(Move));
-    if (!m) return NULL;
-    m->num_xors = 2;
+inline Move* create_move2(Move* m,
+    int pc1,uint64_t mov1,
+    int pc2,uint64_t mov2,
+    uint64_t info_in, movType type){
+        
+    m->type = type;
     m->mov1 = mov1;
     m->pc1 = pc1;
     m->mov2 = mov2;
     m->pc2 = pc2;
+    m->mov3 = 0;
+    m->pc3 = 0;
     m->info = info_in;
-
+    return m + 1;
 }
 
-Move* create_move3(
-    int pc1,unsigned long long mov1,
-    int pc2,unsigned long long mov2,
-    int pc3,unsigned long long mov3,
-    unsigned long long info_in){
+inline Move* create_move3(Move* m,
+    int pc1,uint64_t mov1,
+    int pc2,uint64_t mov2,
+    int pc3,uint64_t mov3,
+    uint64_t info_in){
+        
+        m->type = CAPTURE_PROMOTE;
+        m->mov1 = mov1;
+        m->pc1 = pc1;
+        m->mov2 = mov2;
+        m->pc2 = pc2;
+        m->mov3 = mov3;
+        m->pc3 = pc3;
+        m->info = info_in;
+        return m + 1;
+    }
+    
+Move copy_move(const Move* original) {
+    Move m;
+    m.type = original->type;
+    m.info = original->info;
 
-    Move* m = malloc(sizeof(Move));
-    if (!m) return NULL;
-    m->num_xors = 3;
-    m->mov1 = mov1;
-    m->pc1 = pc1;
-    m->mov2 = mov2;
-    m->pc2 = pc2;
-    m->mov3 = mov3;
-    m->pc3 = pc3;
-    m->info = info_in;
+    m.pc1 = original->pc1;
+    m.pc2 = original->pc2;
+    m.pc3 = original->pc3;
 
+    m.mov1 = original->mov1;
+    m.mov2 = original->mov2;
+    m.mov3 = original->mov3;
+    
+    return m;
 }
 
-void prep_board(unsigned long long *board){
-    board[WHITE_PCS] = board[WHITE_PAWN] |
-                       board[WHITE_KNIGHT] |
-                       board[WHITE_BISHOP] |
-                       board[WHITE_ROOK] |
-                       board[WHITE_QUEEN] |
-                       board[WHITE_KING];
+// CONVERT ENCODING TO ANOTHER
 
-    board[BLACK_PCS] = board[BLACK_PAWN] |
-                       board[BLACK_KNIGHT] |
-                       board[BLACK_BISHOP] |
-                       board[BLACK_ROOK] |
-                       board[BLACK_QUEEN] |
-                       board[BLACK_KING];
-
-}
-
-unsigned long long* from_FEN(const char* p){
-    unsigned long long *board = calloc(BOARD_ARRAY_SIZE,sizeof(unsigned long long));
+uint64_t* from_FEN(const char* p){
+    uint64_t *board = calloc(BOARD_ARRAY_SIZE,sizeof(uint64_t));
     int sq = 0;
 
     while (*p != '\0' && *p != ' '){
@@ -311,74 +320,56 @@ unsigned long long* from_FEN(const char* p){
     return board;
 }
 
-char* move_to_uci(Move* mov, unsigned long long* board){
+char* move_to_uci(Move* mov, uint64_t* board){
     char *out = malloc(5);
-    unsigned long long starting_sq = mov->mov1 & board[mov->pc1];
-    unsigned long long ending_sq = mov->mov1 & ~board[mov->pc1];
+    uint64_t starting_sq = mov->mov1 & board[mov->pc1];
+    uint64_t ending_sq = mov->mov1 & ~board[mov->pc1];
     sprintf(out,"%s%s ",SQUARES[__builtin_ctzll(starting_sq)],SQUARES[__builtin_ctzll(ending_sq)]);
-    printf("MOVE: %s\n",out);
-    if (mov->pc1 == WHITE_PAWN && (ending_sq & RANK_8)){
-        switch (mov->pc2){
-            case 1:
-                out[4] = 'n';
-                return out;
-            case 2:
-                out[4] = 'r';
-                return out;
-            case 3:
-                out[4] = 'b';
-                return out;
-            case 4:
-                out[4] = 'q';
-                return out;
-        }
-        switch (mov->pc3){
-            case 1:
-                out[4] = 'n';
-                return out;
-            case 2:
-                out[4] = 'r';
-                return out;
-            case 3:
-                out[4] = 'b';
-                return out;
-            case 4:
-                out[4] = 'q';
-                return out;
-        }
-    } else if (mov->pc1 == BLACK_PAWN && (ending_sq & RANK_1)){
-        for(int i = 1; i < mov->num_xors; i++){
-            switch (mov->pc2){
-                case 7:
-                    out[4] = 'n';
-                    return out;
-                case 8:
-                    out[4] = 'r';
-                    return out;
-                case 9:
-                    out[4] = 'b';
-                    return out;
-                case 10:
-                    out[4] = 'q';
-                    return out;
-            }
-            switch (mov->pc3){
-                case 7:
-                    out[4] = 'n';
-                    return out;
-                case 8:
-                    out[4] = 'r';
-                    return out;
-                case 9:
-                    out[4] = 'b';
-                    return out;
-                case 10:
-                    out[4] = 'q';
-                    return out;
-            }
-        }
-    } else {
-        return out;
+    switch (mov->type){
+        case EMPTY:
+        case CAPTURE:
+            break;
+        case PROMOTE:
+            out[4] = PIECE_CODES[mov->pc2];
+            break;
+        case CAPTURE_PROMOTE:
+            out[4] = PIECE_CODES[mov->pc3];
+            break;
+        case BOOK_END:
+            out[4] = 'x';
+            break;
+    }
+    if (out[4] == ' '){
+        out[4] = out[3];
+        out[3] = out[2];
+        out[2] = out[1];
+        out[1] = out[0];
+        out[0] = ' ';
+    }
+    return out;
+}
+
+uint64_t sq_from_name(char file, char rank){
+    return RANKS[rank - '1'] & FILES['h' - file];
+}
+
+// READ FEN CSV FOR TESTING
+
+void read_pos_csv(const char* filename, char** FENs, int num_rows){
+    FILE *file = fopen(filename, "r");
+    if (!file) {
+        printf("Error opening file\n");
+        return;
     }
     
+    char line[400];
+    int row = 0;
+    fgets(line, sizeof(line), file);
+    while (fgets(line, sizeof(line), file) && row < num_rows) {        
+        char* comma_pos = strchr(line,',');
+        *comma_pos = '\0';        
+        FENs[row++] = strdup(line);
+    }
+    
+    fclose(file);
 }
