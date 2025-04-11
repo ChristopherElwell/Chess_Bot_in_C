@@ -1,0 +1,6 @@
+# Ignore build output and local config
+builds/
+.vscode/
+stockfish/
+testing_data/
+Pieces/
