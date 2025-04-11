@@ -9,11 +9,12 @@ from stockfish import Stockfish
 colours = ['#DCE6C9','#BCC6A9','#FCF6E9']
 
 LEVEL = 2
-stockfish = Stockfish(path = "C:\\Users\\chris\\OneDrive\\Desktop\\C_Chess\\stockfish\\stockfish-windows-x86-64-avx2.exe",
+stockfish = Stockfish(path = "C:\\C_Chess\\stockfish\\stockfish-windows-x86-64-avx2.exe",
                       parameters={"Threads":2,"Hash":512})
+BUILDS_DIR = "builds"
 SRC_DIR = "src"
 C_FILE = os.path.join(SRC_DIR, "main.c")
-EXE_FILE = os.path.join(SRC_DIR, "chess_release.exe")
+EXE_FILE = os.path.join(BUILDS_DIR, "chess_release.exe")
 
 class window(tk.Tk):
     def __init__(self):

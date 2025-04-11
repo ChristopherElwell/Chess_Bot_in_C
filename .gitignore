@@ -4,3 +4,4 @@ builds/
 stockfish/
 testing_data/
 Pieces/
+game.py
